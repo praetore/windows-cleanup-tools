@@ -47,7 +47,7 @@ Leest een CSV-log en zet bestanden terug naar hun oorspronkelijke pad.
 ### `ClassificeerBestanden.ps1`
 Berekent voor elk bestand een score o.b.v. extensie, bestandsnaam en padinhoud, en classificeert deze:
 - **Classificaties**: `Waarschijnlijk systeembestand`, `Waarschijnlijk gebruikersbestand`, `Onbeslist`
-- **Output**: CSV-rapport met kolommen: `Bestand`, `Technisch`, `Gebruiker`, `VerdachteNaam`, `VerdachtPad`, `BekendGebruikersPad`, `Score`, `Classificatie`
+- **Output**: CSV-rapport met kolommen: `Bestand`, `Categorie`, `Score`, `Classificatie`
 - **Export**: automatisch naar map `classificatie-<timestamp>\...`
 
 ---
