@@ -40,8 +40,7 @@ $categorieMap = @{
 }
 
 $systeemExts = @(
-    ".dll", ".sys", ".exe", ".msi", ".drv", ".ini", ".reg", ".bat", ".cmd", ".vbs", ".ps1", ".log", ".tmp",
-    ".inf", ".dat", ".gadget", ".manifest", ".ico"
+    ".dll", ".sys", ".exe", ".msi", ".drv", ".ini", ".reg", ".bat", ".cmd", ".vbs", ".ps1", ".log", ".tmp", ".inf", ".dat", ".gadget", ".manifest", ".ico", ".ocx", ".cpl", ".scr", ".pif", ".com", ".hlp", ".chm", ".cab", ".msp", ".msu", ".appx", ".msix", ".lnk", ".url", ".theme", ".deskthemepack", ".library-ms", ".search-ms", ".scf", ".job", ".pol", ".adm", ".admx", ".wim", ".esd", ".etl", ".evtx", ".dmp", ".mdmp", ".pdb", ".mui", ".nls"
 )
 
 # --- Keywords ---
