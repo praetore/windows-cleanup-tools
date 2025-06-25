@@ -1,28 +1,13 @@
 <#
 .SYNOPSIS
-    Classificeert individuele bestanden op basis van extensie, bestandsnaam en padstructuur in lijn met de verplaatsingslogica.
+    Classificeert individuele bestanden o.b.v. extensie, naam, pad, afbeeldingsresolutie en bestandsgrootte.
 
 .DESCRIPTION
-    Doorzoekt een pad recursief en bepaalt voor elk bestand de categorie (zoals gebruikt in BestandenVerplaatsen.ps1).
-    Gebruikt dezelfde extensie-categorietoewijzing als dat script, maar weegt daarnaast ook verdachte extensies,
-    bestandsnamen en padsegmenten mee voor een totale classificatie:
-
-        - Waarschijnlijk gebruikersbestand
-        - Waarschijnlijk systeembestand
-        - Onbeslist
+    Doorzoekt een pad recursief en bepaalt per bestand de categorie, scores en classificatie.
+    Kleine afbeeldingen (≤ 256x256 px) óf een afbeeldingsbestand ≤ 50KB krijgen extra verdacht-score.
 
 .OUTPUT
-    CSV-bestanden in een classificatie-<timestamp> map, met:
-      - gebruikers.csv
-      - systeem.csv
-      - onbekend.csv
-      - overzicht.html
-
-.OUTPUT VOORBEELD
-    Bestand,Categorie,Score,Classificatie
-    C:\data\setup.exe,Onbekend,V:2 / G:0,Waarschijnlijk systeembestand
-    C:\data\boeken\jaar.pdf,Documenten,V:0 / G:2,Waarschijnlijk gebruikersbestand
-    C:\misc\logfile.tmp,Onbekend,V:2 / G:0,Waarschijnlijk systeembestand
+    CSV-bestanden in classificatie-<timestamp> map + overzicht.html
 
 #>
 
@@ -31,7 +16,8 @@ param (
     [string]$Path
 )
 
-# --- Categorie extensies ---
+Add-Type -AssemblyName System.Drawing
+
 $categorieMap = @{
     "Afbeeldingen" = @(".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp")
     "Documenten"   = @(".doc", ".docx", ".pdf", ".txt", ".odt", ".rtf", ".xls", ".xlsx", ".ppt", ".pptx")
@@ -42,10 +28,9 @@ $categorieMap = @{
     "Boeken"       = @(".epub", ".mobi", ".azw3", ".cbr", ".cbz")
 }
 
-$systeemExts = @(".dll", ".sys", ".exe", ".msi", ".drv", ".ini", ".reg", ".bat", ".cmd", ".vbs", ".ps1", ".log", ".tmp", ".inf", ".dat", ".gadget", ".manifest", ".ico", ".ocx", ".cpl", ".scr", ".pif", ".com", ".hlp", ".chm", ".cab", ".msp", ".msu", ".appx", ".msix", ".lnk", ".url", ".theme", ".deskthemepack", ".library-ms", ".search-ms", ".scf", ".job", ".pol", ".adm", ".admx", ".wim", ".esd", ".etl", ".evtx", ".dmp", ".mdmp", ".pdb", ".mui", ".nls")
+$systeemExts = @(".dll", ".sys", ".exe", ".msi", ".drv", ".ini", ".reg", ".bat", ".cmd", ".vbs", ".ps1", ".log", ".tmp", ".inf", ".dat", ".gadget", ".manifest", ".ico")
 
-function Get-Categorie {
-    param ($ext)
+function Get-Categorie($ext) {
     foreach ($key in $categorieMap.Keys) {
         if ($categorieMap[$key] -contains $ext.ToLower()) {
             return $key
@@ -54,24 +39,20 @@ function Get-Categorie {
     return "Onbekend"
 }
 
-# --- Scoringskeywords ---
 $verdachteNaamKeywords = @("setup", "autorun", "token", "config", "install", "background", "log", "temp", "patch", "uninstall", "driver", "license", "readme", "support", "windows")
-$systeemMapKeywords = @("windows", "program files", "programdata", "drivers", "intel", "nvidia", "temp", "support", "dell", "system32", "setup", "installer", "hp", "epson", "msocache")
-$gebruikersMapKeywords = @("documents", "downloads", "pictures", "photos", "music", "videos", "desktop", "scans", "boeken", "boekhouding", "financien", "administratie", "documenten", "afbeeldingen", "muziek", "video's", "bureaublad")
+$systeemMapKeywords = @("windows", "program files", "programdata", "drivers", "system32", "intel", "nvidia")
+$gebruikersMapKeywords = @("documents", "downloads", "pictures", "photos", "music", "videos", "desktop", "boeken", "documenten", "afbeeldingen")
 
-# --- Padvalidatie ---
 $volledigPad = Resolve-Path $Path
 if (-not (Test-Path $volledigPad)) {
     Write-Error "❌ Pad bestaat niet: $volledigPad"
     exit 1
 }
 
-# --- Outputmap ---
 $ts = Get-Date -Format "yyyyMMdd-HHmmss"
 $outputMap = Join-Path $PSScriptRoot "classificatie-$ts"
 New-Item -Path $outputMap -ItemType Directory -Force | Out-Null
 
-# --- Bestanden ---
 $alleBestanden = Get-ChildItem -Path $volledigPad -Recurse -File -Force -ErrorAction SilentlyContinue
 $regels = @()
 
@@ -88,8 +69,24 @@ foreach ($bestand in $alleBestanden) {
     if ($cat -ne "Onbekend") { $scoreG++ }
 
     $scoreV += ($verdachteNaamKeywords | Where-Object { $naam -like "*$_*" }).Count
-    $scoreV += ($systeemMapKeywords | Where-Object { $pad -like "*\$_\*" }).Count
+    $scoreV += ($systeemMapKeywords   | Where-Object { $pad -like "*\$_\*" }).Count
     $scoreG += ($gebruikersMapKeywords | Where-Object { $pad -like "*\$_\*" }).Count
+
+    # Kleine afbeelding check
+    if ($cat -eq "Afbeeldingen") {
+        try {
+            $img = [System.Drawing.Image]::FromFile($bestand.FullName)
+            if ($img.Width -le 256 -and $img.Height -le 256) {
+                $scoreV++
+            }
+            if ($bestand.Length -lt 51200) {
+                $scoreV++
+            }
+            $img.Dispose()
+        } catch {
+            # Niet leesbaar als afbeelding, negeer
+        }
+    }
 
     $classificatie = "Onbeslist"
     if ($scoreV -ge 2 -and $scoreG -lt 2) {
@@ -101,12 +98,13 @@ foreach ($bestand in $alleBestanden) {
     $regels += [PSCustomObject]@{
         Bestand = $bestand.FullName
         Categorie = $cat
+        GrootteKB = [int]($bestand.Length / 1KB)
         Score = "V:$scoreV / G:$scoreG"
         Classificatie = $classificatie
     }
 }
 
-# --- Opsplitsing ---
+# --- Output ---
 $regels | Where-Object { $_.Classificatie -eq "Waarschijnlijk systeembestand" } |
     Export-Csv "$outputMap\systeem.csv" -NoTypeInformation -Encoding UTF8
 
@@ -116,8 +114,8 @@ $regels | Where-Object { $_.Classificatie -eq "Waarschijnlijk gebruikersbestand"
 $regels | Where-Object { $_.Classificatie -eq "Onbeslist" } |
     Export-Csv "$outputMap\onbekend.csv" -NoTypeInformation -Encoding UTF8
 
-# --- HTML overzicht ---
-$regels | Sort-Object Classificatie | ConvertTo-Html -Title "Bestandsclassificatie" -Property Bestand, Categorie, Score, Classificatie |
+$regels | Sort-Object Classificatie |
+    ConvertTo-Html -Title "Bestandsclassificatie" -Property Bestand, Categorie, GrootteKB, Score, Classificatie |
     Out-File "$outputMap\overzicht.html"
 
 Write-Host "✅ Classificatie voltooid: $outputMap"
