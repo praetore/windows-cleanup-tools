@@ -4,11 +4,21 @@
 
 .DESCRIPTION
     Doorzoekt een pad recursief en bepaalt per bestand de categorie, scores en classificatie.
-    Kleine afbeeldingen (≤ 256x256 px) óf een afbeeldingsbestand ≤ 50KB krijgen extra verdacht-score.
+    Kleine afbeeldingen (<= 256x256 px) óf een afbeeldingsbestand <= 50KB krijgen extra verdacht-score.
+
+    Classificaties:
+        - Waarschijnlijk gebruikersbestand
+        - Waarschijnlijk systeembestand
+        - Onbeslist
 
 .OUTPUT
     CSV-bestanden in classificatie-<timestamp> map + overzicht.html
 
+.OUTPUT VOORBEELD
+    Bestand,Categorie,GrootteKB,Score,Classificatie
+    C:\data\setup.exe,Onbekend,148,V:2 / G:0,Waarschijnlijk systeembestand
+    C:\data\boeken\jaar.pdf,Documenten,383,V:0 / G:2,Waarschijnlijk gebruikersbestand
+    C:\icons\gear.png,Afbeeldingen,13,V:2 / G:1,Waarschijnlijk systeembestand
 #>
 
 param (
@@ -18,6 +28,7 @@ param (
 
 Add-Type -AssemblyName System.Drawing
 
+# --- Categorie extensies ---
 $categorieMap = @{
     "Afbeeldingen" = @(".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp")
     "Documenten"   = @(".doc", ".docx", ".pdf", ".txt", ".odt", ".rtf", ".xls", ".xlsx", ".ppt", ".pptx")
@@ -28,7 +39,15 @@ $categorieMap = @{
     "Boeken"       = @(".epub", ".mobi", ".azw3", ".cbr", ".cbz")
 }
 
-$systeemExts = @(".dll", ".sys", ".exe", ".msi", ".drv", ".ini", ".reg", ".bat", ".cmd", ".vbs", ".ps1", ".log", ".tmp", ".inf", ".dat", ".gadget", ".manifest", ".ico")
+$systeemExts = @(
+    ".dll", ".sys", ".exe", ".msi", ".drv", ".ini", ".reg", ".bat", ".cmd", ".vbs", ".ps1", ".log", ".tmp",
+    ".inf", ".dat", ".gadget", ".manifest", ".ico"
+)
+
+# --- Keywords ---
+$verdachteNaamKeywords = @("setup", "autorun", "token", "config", "install", "background", "log", "temp", "patch", "uninstall", "driver", "license", "readme", "support", "windows")
+$systeemMapKeywords = @("windows", "program files", "programdata", "drivers", "system32", "intel", "nvidia")
+$gebruikersMapKeywords = @("documents", "downloads", "pictures", "photos", "music", "videos", "desktop", "boeken", "documenten", "afbeeldingen")
 
 function Get-Categorie($ext) {
     foreach ($key in $categorieMap.Keys) {
@@ -39,20 +58,19 @@ function Get-Categorie($ext) {
     return "Onbekend"
 }
 
-$verdachteNaamKeywords = @("setup", "autorun", "token", "config", "install", "background", "log", "temp", "patch", "uninstall", "driver", "license", "readme", "support", "windows")
-$systeemMapKeywords = @("windows", "program files", "programdata", "drivers", "system32", "intel", "nvidia")
-$gebruikersMapKeywords = @("documents", "downloads", "pictures", "photos", "music", "videos", "desktop", "boeken", "documenten", "afbeeldingen")
-
+# --- Padvalidatie ---
 $volledigPad = Resolve-Path $Path
 if (-not (Test-Path $volledigPad)) {
     Write-Error "❌ Pad bestaat niet: $volledigPad"
     exit 1
 }
 
+# --- Outputmap ---
 $ts = Get-Date -Format "yyyyMMdd-HHmmss"
 $outputMap = Join-Path $PSScriptRoot "classificatie-$ts"
 New-Item -Path $outputMap -ItemType Directory -Force | Out-Null
 
+# --- Analyse ---
 $alleBestanden = Get-ChildItem -Path $volledigPad -Recurse -File -Force -ErrorAction SilentlyContinue
 $regels = @()
 
@@ -72,20 +90,13 @@ foreach ($bestand in $alleBestanden) {
     $scoreV += ($systeemMapKeywords   | Where-Object { $pad -like "*\$_\*" }).Count
     $scoreG += ($gebruikersMapKeywords | Where-Object { $pad -like "*\$_\*" }).Count
 
-    # Kleine afbeelding check
     if ($cat -eq "Afbeeldingen") {
         try {
             $img = [System.Drawing.Image]::FromFile($bestand.FullName)
-            if ($img.Width -le 256 -and $img.Height -le 256) {
-                $scoreV++
-            }
-            if ($bestand.Length -lt 51200) {
-                $scoreV++
-            }
+            if ($img.Width -le 256 -and $img.Height -le 256) { $scoreV++ }
+            if ($bestand.Length -lt 51200) { $scoreV++ }  # onder 50KB
             $img.Dispose()
-        } catch {
-            # Niet leesbaar als afbeelding, negeer
-        }
+        } catch {}
     }
 
     $classificatie = "Onbeslist"
