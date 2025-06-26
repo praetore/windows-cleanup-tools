@@ -31,22 +31,46 @@
 .PARAMETER Config
     Optioneel pad naar een JSON-configuratiebestand. Indien niet opgegeven, wordt "config.json" in dezelfde map als het script gebruikt.
 
+.PARAMETER Llm
+    Optionele switch om LLM (Language Model) te gebruiken voor classificatie van onbesliste bestanden.
+    Indien opgegeven, worden bestanden die niet duidelijk als systeem- of gebruikersbestand geclassificeerd kunnen worden,
+    alsnog geclassificeerd met behulp van een lokaal LLM-model (Ollama of LMStudio).
+
+.PARAMETER BatchSize
+    Optionele parameter om de grootte van de batches voor LLM-verwerking in te stellen. Standaard is 100.
+    Alleen van toepassing als -Llm is opgegeven.
+
 .EXAMPLE
     .\ClassificeerBestanden.ps1 -Path "C:\Data\TeClassificeren"
 
     .\ClassificeerBestanden.ps1 -Path "C:\Data\TeClassificeren" -Config "mijn-config.json"
+
+    .\ClassificeerBestanden.ps1 -Path "C:\Data\TeClassificeren" -Llm
+
+    .\ClassificeerBestanden.ps1 -Path "C:\Data\TeClassificeren" -Llm -BatchSize 50
 #>
 
 param (
     [Parameter(Mandatory = $true)]
     [string]$Path,
 
-    [string]$Config = "config.json"
+    [string]$Config = "config.json",
+
+    [switch]$Llm,
+
+    [int]$BatchSize = 100
 )
 
 # Import shared module
 $modulePath = Join-Path $PSScriptRoot "SharedModule"
 Import-Module $modulePath -Force
+
+# Import LlmModule if -Llm is specified
+if ($Llm) {
+    $llmModulePath = Join-Path $PSScriptRoot "LlmModule"
+    Import-Module $llmModulePath -Force
+    Write-Host "🤖 LLM-module geladen voor classificatie van onbesliste bestanden"
+}
 
 Add-Type -AssemblyName System.Drawing
 
@@ -113,6 +137,54 @@ foreach ($bestand in $alleBestanden) {
         GrootteKB = [int]($bestand.Length / 1KB)
         Score = "V:$scoreV / G:$scoreG"
         Classificatie = $classificatie
+    }
+}
+
+# --- LLM classificatie voor onbesliste bestanden ---
+if ($Llm) {
+    $onbeslisteRegels = $regels | Where-Object { $_.Classificatie -eq "Onbeslist" }
+
+    if ($onbeslisteRegels.Count -gt 0) {
+        Write-Host "🤖 Classificeren van $($onbeslisteRegels.Count) onbesliste bestanden met LLM in batches van $BatchSize..."
+
+        # Bereid bestanden voor voor LLM verwerking
+        $llmBestanden = $onbeslisteRegels | ForEach-Object {
+            [PSCustomObject]@{
+                FilePath = $_.Bestand
+                Category = $_.Categorie
+                Extension = [System.IO.Path]::GetExtension($_.Bestand).TrimStart('.')
+            }
+        }
+
+        # Roep LLM aan voor classificatie via de LlmModule
+        $batchResultaten = Get-LlmFileClassification -Files $llmBestanden -BatchSize $BatchSize
+
+        # Verwerk de resultaten en update de classificaties
+        foreach ($regel in $onbeslisteRegels) {
+            $bestandsPad = $regel.Bestand
+            $bestandsNaam = Split-Path $bestandsPad -Leaf
+
+            if ($batchResultaten.ContainsKey($bestandsPad)) {
+                $classificatie = $batchResultaten[$bestandsPad]
+
+                # Update de classificatie
+                if ($classificatie -match "systeem|system") {
+                    $regel.Classificatie = "Waarschijnlijk systeembestand"
+                    $regel.Score = "$($regel.Score) + LLM"
+                    Write-Host "📊 LLM classificatie: $bestandsNaam -> Waarschijnlijk systeembestand"
+                } 
+                elseif ($classificatie -match "gebruiker|user") {
+                    $regel.Classificatie = "Waarschijnlijk gebruikersbestand"
+                    $regel.Score = "$($regel.Score) + LLM"
+                    Write-Host "📊 LLM classificatie: $bestandsNaam -> Waarschijnlijk gebruikersbestand"
+                }
+            }
+        }
+
+        Write-Host "✅ LLM classificatie voltooid"
+    }
+    else {
+        Write-Host "ℹ️ Geen onbesliste bestanden om te classificeren met LLM"
     }
 }
 
