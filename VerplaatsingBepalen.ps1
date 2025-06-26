@@ -20,6 +20,15 @@
 .PARAMETER OutFile
     Optioneel pad naar het CSV-uitvoerbestand. Indien niet opgegeven, wordt automatisch verplaatslijst-[timestamp].csv aangemaakt.
 
+.PARAMETER Llm
+    Optionele switch om een lokaal LLM (Language Model) te gebruiken voor het bepalen van de submap. 
+    Gebruikt LMStudio of Ollama om te suggereren waar bestanden geplaatst moeten worden op basis van pad, categorie en extensie.
+    Bestanden worden in batches verwerkt voor efficiëntere LLM-verwerking, gegroepeerd op categorie en extensie.
+
+.PARAMETER BatchSize
+    Optionele parameter om de grootte van de batches te bepalen bij het gebruik van LLM. 
+    Standaard is dit 100 bestanden per batch. Alleen van toepassing als -Llm is opgegeven.
+
 .EXAMPLE
     .\VerplaatsingBepalen.ps1 -File "te_verplaatsen.txt" -Out "C:\Doel"
     # Genereert een CSV-bestand met bestanden uit te_verplaatsen.txt en hun bestemmingen in C:\Doel
@@ -31,6 +40,14 @@
 .EXAMPLE
     .\VerplaatsingBepalen.ps1 -File "te_verplaatsen.txt" -Out "C:\Doel" -Config "mijn-config.json"
     # Gebruikt een aangepast configuratiebestand
+
+.EXAMPLE
+    .\VerplaatsingBepalen.ps1 -File "te_verplaatsen.txt" -Out "C:\Doel" -Llm
+    # Gebruikt een lokaal LLM om de submap te bepalen
+
+.EXAMPLE
+    .\VerplaatsingBepalen.ps1 -File "te_verplaatsen.txt" -Out "C:\Doel" -Llm -BatchSize 50
+    # Gebruikt een lokaal LLM om de submap te bepalen met een batchgrootte van 50 bestanden
 #>
 
 param (
@@ -42,12 +59,20 @@ param (
 
     [string]$OutFile,
 
-    [string]$Config = "config.json"
+    [string]$Config = "config.json",
+
+    [switch]$Llm,
+
+    [int]$BatchSize = 100
 )
 
 # Import shared module
 $modulePath = Join-Path $PSScriptRoot "SharedModule"
 Import-Module $modulePath -Force
+
+# Import LLM module
+$llmModulePath = Join-Path $PSScriptRoot "LlmModule"
+Import-Module $llmModulePath -Force
 
 # Controleer of het invoerbestand bestaat
 if (-not (Test-Path $File)) {
@@ -89,16 +114,55 @@ $bestanden = $bestandsPaden | Where-Object { Test-Path $_ } | ForEach-Object {
 # Genereer verplaatslijst
 $verplaatslijst = @()
 
+# Bereid bestanden voor op verwerking
+if ($Llm) {
+    Write-Host "`n🔄 Bestanden voorbereiden voor batch verwerking met LLM..."
+
+    # Bereid bestanden voor op batch verwerking
+    $filesForBatch = @()
+
+    foreach ($bestand in $bestanden) {
+        $ext = $bestand.Extension
+        $categorie = Get-Categorie -Extension $ext -CategorieMap $categorieMap -Config $config
+
+        $filesForBatch += [PSCustomObject]@{
+            FilePath = $bestand.FullName
+            FileName = $bestand.Name
+            Extension = $ext
+            Category = $categorie
+            ParentDir = Split-Path $bestand.DirectoryName -Leaf
+        }
+    }
+
+    # Verwerk bestanden in batches
+    Write-Host "`n🚀 Verwerken van bestanden in batches (batchgrootte: $BatchSize)..."
+    $batchResults = Get-BatchLlmSuggestions -Files $filesForBatch -BatchSize $BatchSize
+}
+
+# Verwerk de resultaten
 foreach ($bestand in $bestanden) {
     $ext = $bestand.Extension
     $categorie = Get-Categorie -Extension $ext -CategorieMap $categorieMap -Config $config
+    $bovenMap = Split-Path $bestand.DirectoryName -Leaf
 
     # Bepaal de doelmap op basis van de categorie
     $doelBasis = Join-Path $doelRoot $categorie
 
-    # Bepaal de definitieve doelmap (inclusief eventuele submap)
-    $bovenMap = Split-Path $bestand.DirectoryName -Leaf
-    $subfolder = if ($bovenMap -ieq "Desktop") { "" } else { $bovenMap }
+    # Bepaal de subfolder op basis van LLM of standaard logica
+    if ($Llm) {
+        # Gebruik het resultaat van de batch verwerking
+        if ($batchResults.ContainsKey($bestand.FullName)) {
+            $subfolder = $batchResults[$bestand.FullName]
+        } else {
+            # Fallback naar standaard logica als er geen resultaat is
+            $subfolder = if ($bovenMap -ieq "Desktop") { "" } else { $bovenMap }
+            Write-Host "⚠️ Geen batch resultaat voor $($bestand.Name), standaard mapindeling gebruikt"
+        }
+    } else {
+        # Standaard verwerking zonder LLM
+        $subfolder = if ($bovenMap -ieq "Desktop") { "" } else { $bovenMap }
+    }
+
     $definitieveDoelMap = if ($subfolder) { Join-Path $doelBasis $subfolder } else { $doelBasis }
 
     # Bepaal het volledige doelpad
@@ -115,4 +179,10 @@ foreach ($bestand in $bestanden) {
 
 # Schrijf verplaatslijst naar CSV
 $verplaatslijst | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
-Write-Host "`n✅ Verplaatslijst opgeslagen in: $csvPath"
+
+# Toon resultaat
+if ($Llm) {
+    Write-Host "`n✅ Verplaatslijst opgeslagen in: $csvPath (met LLM suggesties)"
+} else {
+    Write-Host "`n✅ Verplaatslijst opgeslagen in: $csvPath"
+}
