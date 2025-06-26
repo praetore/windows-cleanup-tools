@@ -9,25 +9,57 @@
 
 .PARAMETER Path
     Hoofdpad waar de opschoning moet starten.
+
+.PARAMETER Config
+    Optioneel pad naar een JSON-configuratiebestand. Indien niet opgegeven, wordt "config.json" in dezelfde map als het script gebruikt.
+    Het configuratiebestand moet een "ignore" sectie bevatten met "extensions" en "directories" arrays.
+    Let op: "$recycle.bin" wordt altijd toegevoegd aan de lijst met ongewenste mappen, ongeacht de configuratie.
+
+.EXAMPLE
+    .\VerwijderLegeMappen.ps1 -Path "C:\Data\OpTeSchonen"
+
+    .\VerwijderLegeMappen.ps1 -Path "C:\Data\OpTeSchonen" -Config "mijn-config.json"
 #>
 
 param (
     [Parameter(Mandatory = $true)]
-    [string]$Path
+    [string]$Path,
+
+    [string]$Config = "config.json"
 )
 
-# Ongewenste bestandspatronen
-$ongewensteBestandsnamen = @(
-    ".ds_store", "thumbs.db", "desktop.ini", "icon\r", "autorun.inf"
-)
-$ongewensteMapnamen = @(
-    "__macosx", "$recycle.bin", "system volume information"
-)
+# Laad configuratie uit JSON bestand
+$configPath = if ([System.IO.Path]::IsPathRooted($Config)) {
+    $Config
+} else {
+    Join-Path $PSScriptRoot $Config
+}
+
+if (Test-Path $configPath) {
+    try {
+        $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json
+        $ongewensteBestandsnamen = $config.ignore.extensions
+        $ongewensteMapnamen = $config.ignore.directories
+
+        # Voeg $recycle.bin toe aan de lijst met ongewenste mappen
+        $ongewensteMapnamen += "$recycle.bin"
+
+        Write-Host "✅ Configuratie geladen uit $configPath"
+    }
+    catch {
+        Write-Error "❌ Fout bij laden van configuratie: $_"
+        exit 1
+    }
+}
+else {
+    Write-Error "❌ Configuratiebestand niet gevonden: $configPath"
+    exit 1
+}
 
 # Normaliseer pad
 $rootMap = Convert-Path -LiteralPath $Path
 $verwijderd = $true
-$bezochteMappen = @{}
+$verwijderPogingMappen = @{}
 
 while ($verwijderd) {
     $verwijderd = $false
@@ -37,10 +69,9 @@ while ($verwijderd) {
     ForEach-Object {
         $pad = $_.FullName.ToLower()
 
-        if ($bezochteMappen.ContainsKey($pad)) {
+        if ($verwijderPogingMappen.ContainsKey($pad)) {
             return
         }
-        $bezochteMappen[$pad] = $true
 
         try {
             # Verwijder ongewenste bestanden in deze map
@@ -66,9 +97,11 @@ while ($verwijderd) {
                 Remove-Item -Path $_.FullName -Force -Recurse -ErrorAction Stop
                 Write-Host "🗑️  Verwijderd map: $($_.FullName)"
                 $verwijderd = $true
+                $verwijderPogingMappen[$pad] = $true
             }
         } catch {
             Write-Warning "❌ Kon map niet verwijderen: $($_.FullName) - $_"
+            $verwijderPogingMappen[$pad] = $true
         }
     }
 }

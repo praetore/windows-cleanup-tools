@@ -12,9 +12,9 @@
     - .csv: verwacht een kolom 'Bestand' met absolute paden.
 
 .EXAMPLE
-    .\VerwijderBestanden.ps1 -File "doelenlijst.txt"
+    .\VerwijderBestanden.ps1 -File "ongewenste_bestanden.txt"
 
-    .\VerwijderBestanden.ps1 -File "gebruikersbestanden.csv"
+    .\VerwijderBestanden.ps1 -File "systeem.csv"
 #>
 
 param (

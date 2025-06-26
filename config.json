@@ -1,0 +1,35 @@
+{
+    "user": {
+        "extensions": {
+            "Afbeeldingen": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp"],
+            "Documenten": [".doc", ".docx", ".pdf", ".txt", ".odt", ".rtf", ".xls", ".xlsx", ".ppt", ".pptx"],
+            "Muziek": [".mp3", ".wav", ".flac", ".m4a", ".aac"],
+            "Video's": [".mp4", ".avi", ".mov", ".wmv", ".mkv"],
+            "Adobe": [".psd", ".indd", ".ai", ".ait", ".idml", ".inx"],
+            "Backups": [".dbk", ".bak", ".zip", ".7z", ".rar", ".tar", ".gz", ".iso", ".dbb"],
+            "Boeken": [".epub", ".mobi", ".azw3", ".cbr", ".cbz"]
+        },
+        "directories": [
+            "documents", "downloads", "pictures", "photos", "music", "videos", "desktop", "boeken", "documenten", "afbeeldingen"
+        ]
+    },
+    "system": {
+        "extensions": [
+            ".dll", ".sys", ".exe", ".msi", ".drv", ".ini", ".reg", ".bat", ".cmd", ".vbs", ".ps1", ".log", ".tmp", ".inf", ".dat", ".gadget", ".manifest", ".ico", ".ocx", ".cpl", ".scr", ".pif", ".com", ".hlp", ".chm", ".cab", ".msp", ".msu", ".appx", ".msix", ".lnk", ".url", ".theme", ".deskthemepack", ".library-ms", ".search-ms", ".scf", ".job", ".pol", ".adm", ".admx", ".wim", ".esd", ".etl", ".evtx", ".dmp", ".mdmp", ".pdb", ".mui", ".nls"
+        ],
+        "directories": [
+            "windows", "program files", "programdata", "drivers", "system32", "intel", "nvidia"
+        ],
+        "files": [
+            "setup", "autorun", "token", "config", "install", "background", "log", "temp", "patch", "uninstall", "driver", "license", "readme", "support", "windows"
+        ]
+    },
+    "ignore": {
+        "extensions": [
+            ".ds_store", "thumbs.db", "desktop.ini", "icon\r", "autorun.inf"
+        ],
+        "directories": [
+            "__macosx", "system volume information"
+        ]
+    }
+}

@@ -19,34 +19,60 @@
     C:\data\setup.exe,Onbekend,148,V:2 / G:0,Waarschijnlijk systeembestand
     C:\data\boeken\jaar.pdf,Documenten,383,V:0 / G:2,Waarschijnlijk gebruikersbestand
     C:\icons\gear.png,Afbeeldingen,13,V:2 / G:1,Waarschijnlijk systeembestand
+
+.PARAMETER Path
+    Het pad dat recursief doorzocht moet worden voor bestanden om te classificeren.
+
+.PARAMETER Config
+    Optioneel pad naar een JSON-configuratiebestand. Indien niet opgegeven, wordt "config.json" in dezelfde map als het script gebruikt.
+
+.EXAMPLE
+    .\ClassificeerBestanden.ps1 -Path "C:\Data\TeClassificeren"
+
+    .\ClassificeerBestanden.ps1 -Path "C:\Data\TeClassificeren" -Config "mijn-config.json"
 #>
 
 param (
     [Parameter(Mandatory = $true)]
-    [string]$Path
+    [string]$Path,
+
+    [string]$Config = "config.json"
 )
 
 Add-Type -AssemblyName System.Drawing
 
-# --- Categorie extensies ---
-$categorieMap = @{
-    "Afbeeldingen" = @(".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp")
-    "Documenten"   = @(".doc", ".docx", ".pdf", ".txt", ".odt", ".rtf", ".xls", ".xlsx", ".ppt", ".pptx")
-    "Muziek"       = @(".mp3", ".wav", ".flac", ".m4a", ".aac")
-    "Video's"      = @(".mp4", ".avi", ".mov", ".wmv", ".mkv")
-    "Adobe"        = @(".psd", ".indd", ".ai", ".ait", ".idml", ".inx")
-    "Backups"      = @(".dbk", ".bak", ".zip", ".7z", ".rar", ".tar", ".gz", ".iso", ".dbb")
-    "Boeken"       = @(".epub", ".mobi", ".azw3", ".cbr", ".cbz")
+# --- Laad configuratie uit JSON bestand ---
+$configPath = if ([System.IO.Path]::IsPathRooted($Config)) {
+    $Config
+} else {
+    Join-Path $PSScriptRoot $Config
 }
+if (Test-Path $configPath) {
+    try {
+        $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json
 
-$systeemExts = @(
-    ".dll", ".sys", ".exe", ".msi", ".drv", ".ini", ".reg", ".bat", ".cmd", ".vbs", ".ps1", ".log", ".tmp", ".inf", ".dat", ".gadget", ".manifest", ".ico", ".ocx", ".cpl", ".scr", ".pif", ".com", ".hlp", ".chm", ".cab", ".msp", ".msu", ".appx", ".msix", ".lnk", ".url", ".theme", ".deskthemepack", ".library-ms", ".search-ms", ".scf", ".job", ".pol", ".adm", ".admx", ".wim", ".esd", ".etl", ".evtx", ".dmp", ".mdmp", ".pdb", ".mui", ".nls"
-)
+        # Converteer JSON arrays naar PowerShell arrays/hashtables
+        $categorieMap = @{}
+        foreach ($property in $config.user.extensions.PSObject.Properties) {
+            $categorieMap[$property.Name] = $property.Value
+        }
 
-# --- Keywords ---
-$verdachteNaamKeywords = @("setup", "autorun", "token", "config", "install", "background", "log", "temp", "patch", "uninstall", "driver", "license", "readme", "support", "windows")
-$systeemMapKeywords = @("windows", "program files", "programdata", "drivers", "system32", "intel", "nvidia")
-$gebruikersMapKeywords = @("documents", "downloads", "pictures", "photos", "music", "videos", "desktop", "boeken", "documenten", "afbeeldingen")
+        $systeemExts = $config.system.extensions
+        $verdachteNaamKeywords = $config.system.files
+        $systeemMapKeywords = $config.system.directories
+        $gebruikersMapKeywords = $config.user.directories
+
+        Write-Host "✅ Configuratie geladen uit $configPath"
+    }
+    catch {
+        Write-Error "❌ Fout bij laden van configuratie: $_"
+        exit 1
+    }
+}
+else {
+    Write-Error "❌ Configuratiebestand niet gevonden: $configPath"
+    exit 1
+}
 
 function Get-Categorie($ext) {
     foreach ($key in $categorieMap.Keys) {
