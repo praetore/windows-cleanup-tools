@@ -93,7 +93,7 @@ function Get-Categorie {
         }
     }
 
-    return "Onbekend"
+    return "Overig"
 }
 
 # Function to normalize a path

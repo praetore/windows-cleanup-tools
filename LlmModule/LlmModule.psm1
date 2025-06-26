@@ -38,7 +38,8 @@ function Get-BatchLlmSuggestions {
                 $fileDescriptions = $batch | ForEach-Object {
                     $fileName = Split-Path $_.FilePath -Leaf
                     $parentDir = Split-Path (Split-Path $_.FilePath -Parent) -Leaf
-                    "- Bestandsnaam: $fileName, Huidige map: $parentDir"
+                    $lastWriteTime = (Get-Item $_.FilePath).LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
+                    "- Bestandsnaam: $fileName, Huidige map: $parentDir, Wijzigingsdatum: $lastWriteTime"
                 } | Out-String
 
                 $batchPrompt = @"
@@ -55,6 +56,9 @@ BELANGRIJK: Zoek naar patronen en relaties tussen bestanden. Probeer bestanden t
 - Groepeer bestanden van dezelfde gebeurtenis of activiteit (bijv. "Vakantie 2022", "Verbouwing Huis")
 - Zoek naar gemeenschappelijke namen, personen of thema's in bestandsnamen
 - Gebruik datums of periodes als dat logisch is (bijv. "2022-Q1", "Zomer 2023")
+- Houd rekening met de wijzigingsdatum van bestanden bij het maken van suggesties
+
+BELANGRIJK: Gebruik NIET de hoofdcategorie "$category" (of varianten daarvan in enkelvoud of meervoud) in de naam van de submap.
 
 Geef voor elk bestand een suggestie in het volgende formaat:
 [Bestandsnaam]: [Submap]
@@ -90,7 +94,7 @@ Als er geen specifieke submap nodig is, gebruik dan "Geen" als submap.
                         messages = @(
                             @{
                                 role = "system"
-                                content = "Je bent een bestandsorganisatie-assistent die korte, directe antwoorden geeft. Je zoekt naar patronen tussen bestanden en groepeert ze in logische clusters op basis van entiteiten, namen, gebeurtenissen of thema's. Je streeft naar consistente mapnamen voor gerelateerde bestanden."
+                                content = "Je bent een bestandsorganisatie-assistent die korte, directe antwoorden geeft. Je zoekt naar patronen tussen bestanden en groepeert ze in logische clusters op basis van entiteiten, namen, gebeurtenissen of thema's. Je streeft naar consistente mapnamen voor gerelateerde bestanden. Gebruik NIET de hoofdcategorie (of varianten daarvan in enkelvoud of meervoud) in de naam van de submap. Houd rekening met de wijzigingsdatum van bestanden bij het maken van suggesties."
                             },
                             @{
                                 role = "user"
