@@ -24,6 +24,8 @@
     Optionele switch om een lokaal LLM (Language Model) te gebruiken voor het bepalen van de submap. 
     Gebruikt LMStudio of Ollama om te suggereren waar bestanden geplaatst moeten worden op basis van pad, categorie en extensie.
     Bestanden worden in batches verwerkt voor efficiëntere LLM-verwerking, gegroepeerd op categorie en extensie.
+    Het LLM zal proberen bestanden te clusteren in logische groepen, zoals bestanden die bij dezelfde entiteit, persoon of gebeurtenis horen
+    (bijv. "Vakantie 2022" of "Familie Jansen"), om een betere mapstructuur te creëren.
 
 .PARAMETER BatchSize
     Optionele parameter om de grootte van de batches te bepalen bij het gebruik van LLM. 

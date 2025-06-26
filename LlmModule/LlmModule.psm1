@@ -50,6 +50,12 @@ Hoofdcategorie: $category
 Bestanden:
 $fileDescriptions
 
+BELANGRIJK: Zoek naar patronen en relaties tussen bestanden. Probeer bestanden te clusteren in logische groepen.
+- Groepeer bestanden die bij dezelfde entiteit horen (bijv. "Familie Jansen", "Project Alpha")
+- Groepeer bestanden van dezelfde gebeurtenis of activiteit (bijv. "Vakantie 2022", "Verbouwing Huis")
+- Zoek naar gemeenschappelijke namen, personen of thema's in bestandsnamen
+- Gebruik datums of periodes als dat logisch is (bijv. "2022-Q1", "Zomer 2023")
+
 Geef voor elk bestand een suggestie in het volgende formaat:
 [Bestandsnaam]: [Submap]
 
@@ -84,7 +90,7 @@ Als er geen specifieke submap nodig is, gebruik dan "Geen" als submap.
                         messages = @(
                             @{
                                 role = "system"
-                                content = "Je bent een bestandsorganisatie-assistent die korte, directe antwoorden geeft."
+                                content = "Je bent een bestandsorganisatie-assistent die korte, directe antwoorden geeft. Je zoekt naar patronen tussen bestanden en groepeert ze in logische clusters op basis van entiteiten, namen, gebeurtenissen of thema's. Je streeft naar consistente mapnamen voor gerelateerde bestanden."
                             },
                             @{
                                 role = "user"
