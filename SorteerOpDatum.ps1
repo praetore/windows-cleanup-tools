@@ -47,15 +47,13 @@ param (
     [string]$LogFile
 )
 
-# Normalizeer en valideer paden
-$bronMap = Convert-Path -LiteralPath $Path
-$doelMap = Resolve-Path -Path $Out -ErrorAction SilentlyContinue
+# Import shared module
+$modulePath = Join-Path $PSScriptRoot "SharedModule"
+Import-Module $modulePath -Force
 
-if (-not $doelMap) {
-    $doelMap = Join-Path -Path (Get-Location) -ChildPath $Out
-    New-Item -Path $doelMap -ItemType Directory -Force | Out-Null
-}
-$doelMap = $doelMap.Path
+# Normalizeer en valideer paden
+$bronMap = Get-NormalizedPath -Path $Path
+$doelMap = Get-NormalizedPath -Path $Out -CreateIfNotExists
 
 if (-not (Test-Path $bronMap)) {
     Write-Error "❌ Bronmap bestaat niet: $bronMap"
@@ -70,7 +68,7 @@ if ($LogFile) {
     }
     $csvPath = $LogFile
 } else {
-    $base = Join-Path $PSScriptRoot ("ordenen-{0:yyyyMMdd-HHmmss}" -f (Get-Date))
+    $base = Join-Path $PSScriptRoot ("herstel-sorteren-{0:yyyyMMdd-HHmmss}" -f (Get-Date))
     $i = 0
     do {
         $csvPath = if ($i -eq 0) { "$base.csv" } else { "$base-$i.csv" }

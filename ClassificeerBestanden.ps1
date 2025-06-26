@@ -12,9 +12,14 @@
         - Onbeslist
 
 .OUTPUT
-    CSV-bestanden in classificatie-<timestamp> map + overzicht.html
+    Tekstbestanden met volledige bestandspaden in classificatie-<timestamp> map + overzicht.html
 
 .OUTPUT VOORBEELD
+    Tekstbestanden (systeem.txt, gebruikers.txt, onbekend.txt):
+    C:\data\setup.exe
+    C:\icons\gear.png
+
+    HTML-bestand (overzicht.html) bevat alle details:
     Bestand,Categorie,GrootteKB,Score,Classificatie
     C:\data\setup.exe,Onbekend,148,V:2 / G:0,Waarschijnlijk systeembestand
     C:\data\boeken\jaar.pdf,Documenten,383,V:0 / G:2,Waarschijnlijk gebruikersbestand
@@ -39,61 +44,32 @@ param (
     [string]$Config = "config.json"
 )
 
+# Import shared module
+$modulePath = Join-Path $PSScriptRoot "SharedModule"
+Import-Module $modulePath -Force
+
 Add-Type -AssemblyName System.Drawing
 
 # --- Laad configuratie uit JSON bestand ---
-$configPath = if ([System.IO.Path]::IsPathRooted($Config)) {
-    $Config
-} else {
-    Join-Path $PSScriptRoot $Config
-}
-if (Test-Path $configPath) {
-    try {
-        $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json
-
-        # Converteer JSON arrays naar PowerShell arrays/hashtables
-        $categorieMap = @{}
-        foreach ($property in $config.user.extensions.PSObject.Properties) {
-            $categorieMap[$property.Name] = $property.Value
-        }
-
-        $systeemExts = $config.system.extensions
-        $verdachteNaamKeywords = $config.system.files
-        $systeemMapKeywords = $config.system.directories
-        $gebruikersMapKeywords = $config.user.directories
-
-        Write-Host "✅ Configuratie geladen uit $configPath"
-    }
-    catch {
-        Write-Error "❌ Fout bij laden van configuratie: $_"
-        exit 1
-    }
-}
-else {
-    Write-Error "❌ Configuratiebestand niet gevonden: $configPath"
-    exit 1
-}
-
-function Get-Categorie($ext) {
-    foreach ($key in $categorieMap.Keys) {
-        if ($categorieMap[$key] -contains $ext.ToLower()) {
-            return $key
-        }
-    }
-    return "Onbekend"
-}
+$configData = Get-Configuration -ConfigPath $Config
+$config = $configData.Config
+$categorieMap = $configData.CategorieMap
+$systeemExts = $configData.SysteemExts
+$verdachteNaamKeywords = $configData.VerdachteNaamKeywords
+$systeemMapKeywords = $configData.SysteemMapKeywords
+$gebruikersMapKeywords = $configData.GebruikersMapKeywords
 
 # --- Padvalidatie ---
-$volledigPad = Resolve-Path $Path
+$volledigPad = Get-NormalizedPath -Path $Path
 if (-not (Test-Path $volledigPad)) {
     Write-Error "❌ Pad bestaat niet: $volledigPad"
     exit 1
 }
 
-# --- Outputmap ---
+# --- Uitvoermap ---
 $ts = Get-Date -Format "yyyyMMdd-HHmmss"
-$outputMap = Join-Path $PSScriptRoot "classificatie-$ts"
-New-Item -Path $outputMap -ItemType Directory -Force | Out-Null
+$uitvoerMap = Join-Path $PSScriptRoot "classificatie-$ts"
+New-Item -Path $uitvoerMap -ItemType Directory -Force | Out-Null
 
 # --- Analyse ---
 $alleBestanden = Get-ChildItem -Path $volledigPad -Recurse -File -Force -ErrorAction SilentlyContinue
@@ -103,13 +79,13 @@ foreach ($bestand in $alleBestanden) {
     $ext = $bestand.Extension.ToLower()
     $naam = $bestand.Name.ToLower()
     $pad = $bestand.FullName.ToLower()
-    $cat = Get-Categorie $ext
+    $cat = Get-Categorie -Extension $ext -CategorieMap $categorieMap -Config $config
 
     $scoreV = 0
     $scoreG = 0
 
     if ($systeemExts -contains $ext) { $scoreV++ }
-    if ($cat -ne "Onbekend") { $scoreG++ }
+    if ($categorieMap.Keys -contains $cat) { $scoreG++ }
 
     $scoreV += ($verdachteNaamKeywords | Where-Object { $naam -like "*$_*" }).Count
     $scoreV += ($systeemMapKeywords   | Where-Object { $pad -like "*\$_\*" }).Count
@@ -142,16 +118,19 @@ foreach ($bestand in $alleBestanden) {
 
 # --- Output ---
 $regels | Where-Object { $_.Classificatie -eq "Waarschijnlijk systeembestand" } |
-    Export-Csv "$outputMap\systeem.csv" -NoTypeInformation -Encoding UTF8
+    Select-Object -ExpandProperty Bestand |
+    Out-File "$uitvoerMap\systeem.txt" -Encoding UTF8
 
 $regels | Where-Object { $_.Classificatie -eq "Waarschijnlijk gebruikersbestand" } |
-    Export-Csv "$outputMap\gebruikers.csv" -NoTypeInformation -Encoding UTF8
+    Select-Object -ExpandProperty Bestand |
+    Out-File "$uitvoerMap\gebruikers.txt" -Encoding UTF8
 
 $regels | Where-Object { $_.Classificatie -eq "Onbeslist" } |
-    Export-Csv "$outputMap\onbekend.csv" -NoTypeInformation -Encoding UTF8
+    Select-Object -ExpandProperty Bestand |
+    Out-File "$uitvoerMap\onbekend.txt" -Encoding UTF8
 
 $regels | Sort-Object Classificatie |
     ConvertTo-Html -Title "Bestandsclassificatie" -Property Bestand, Categorie, GrootteKB, Score, Classificatie |
-    Out-File "$outputMap\overzicht.html"
+    Out-File "$uitvoerMap\overzicht.html"
 
-Write-Host "✅ Classificatie voltooid: $outputMap"
+Write-Host "✅ Classificatie voltooid: $uitvoerMap"

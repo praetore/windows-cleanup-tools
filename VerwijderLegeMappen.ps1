@@ -28,36 +28,21 @@ param (
     [string]$Config = "config.json"
 )
 
+# Import shared module
+$modulePath = Join-Path $PSScriptRoot "SharedModule"
+Import-Module $modulePath -Force
+
 # Laad configuratie uit JSON bestand
-$configPath = if ([System.IO.Path]::IsPathRooted($Config)) {
-    $Config
-} else {
-    Join-Path $PSScriptRoot $Config
-}
+$configData = Get-Configuration -ConfigPath $Config
+$config = $configData.Config
+$ongewensteBestandsnamen = $configData.OngewensteBestandsnamen
+$ongewensteMapnamen = $configData.OngewensteMapnamen
 
-if (Test-Path $configPath) {
-    try {
-        $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json
-        $ongewensteBestandsnamen = $config.ignore.extensions
-        $ongewensteMapnamen = $config.ignore.directories
-
-        # Voeg $recycle.bin toe aan de lijst met ongewenste mappen
-        $ongewensteMapnamen += "$recycle.bin"
-
-        Write-Host "✅ Configuratie geladen uit $configPath"
-    }
-    catch {
-        Write-Error "❌ Fout bij laden van configuratie: $_"
-        exit 1
-    }
-}
-else {
-    Write-Error "❌ Configuratiebestand niet gevonden: $configPath"
-    exit 1
-}
+# Voeg $recycle.bin toe aan de lijst met ongewenste mappen
+$ongewensteMapnamen += "$recycle.bin"
 
 # Normaliseer pad
-$rootMap = Convert-Path -LiteralPath $Path
+$rootMap = Get-NormalizedPath -Path $Path
 $verwijderd = $true
 $verwijderPogingMappen = @{}
 

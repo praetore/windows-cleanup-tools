@@ -1,10 +1,10 @@
 <#
 .SYNOPSIS
-    Verplaatst of kopieert bestanden naar een gestructureerde doelmap op basis van bestandscategorieën, vanaf een opgegeven pad of een bestand met bestandspaden.
+    Verplaatst of kopieert bestanden naar een doelmap vanaf een opgegeven pad of een bestand met bestandspaden.
 
 .DESCRIPTION
-    Doorzoekt recursief een map (-Path) of leest een bestand (-File) met bestandsnamen. Op basis van extensie bepaalt het de categorie
-    (zoals Afbeeldingen, Documenten, Backups, Boeken, Adobe) en verplaatst of kopieert het bestand naar een doelmap (-Out), gestructureerd per categorie/submap.
+    Doorzoekt recursief een map (-Path) of leest een bestand (-File) met bestandsnamen en verplaatst of kopieert de bestanden naar een doelmap (-Out).
+    Bij gebruik van een CSV-bestand met 'Bestand' en 'Bestemming' kolommen worden de bestanden naar de opgegeven bestemmingen verplaatst of gekopieerd.
     Het pad vóór en na verwerking wordt gelogd in een CSV-bestand.
 
 .PARAMETER Path
@@ -22,87 +22,52 @@
 .PARAMETER LogFile
     Optioneel pad naar een CSV-logbestand. Indien niet opgegeven, wordt automatisch move-[timestamp].csv aangemaakt.
 
-.PARAMETER Config
-    Optioneel pad naar een JSON-configuratiebestand. Indien niet opgegeven, wordt "config.json" in dezelfde map als het script gebruikt.
 
 .EXAMPLE
     .\BestandenVerplaatsen.ps1 -Path "C:\Backup" -Out "C:\Resultaat"
-    # Verplaatst alle bestanden uit de map C:\Backup naar C:\Resultaat, georganiseerd per categorie
+    # Verplaatst alle bestanden uit de map C:\Backup naar C:\Resultaat
 
     .\BestandenVerplaatsen.ps1 -File "systeembestanden.csv" -Out "C:\Doel" -Copy
     # Kopieert bestanden uit een CSV-bestand met een 'Bestand' kolom naar C:\Doel
 
+    .\BestandenVerplaatsen.ps1 -File "gebruikersbestanden.csv"
+    # Kopieert bestanden uit een CSV-bestand met 'Bestand' en 'Bestemming' kolommen naar de opgegeven bestemmingen
+
     .\BestandenVerplaatsen.ps1 -File "te_verplaatsen.txt" -Out "C:\Doel"
     # Verplaatst bestanden uit een tekstbestand met één bestandspad per regel naar C:\Doel
-
-    .\BestandenVerplaatsen.ps1 -Path "C:\Backup" -Out "C:\Resultaat" -Config "mijn-config.json"
-    # Gebruikt een aangepast configuratiebestand
 #>
 
 param (
     [string]$Path,
     [string]$File,
 
-    [Parameter(Mandatory = $true)]
+    [Parameter(Mandatory = $false)]
     [string]$Out,
 
     [switch]$Copy,
 
-    [string]$LogFile,
-
-    [string]$Config = "config.json"
+    [string]$LogFile
 )
+
+# Import shared module
+$modulePath = Join-Path $PSScriptRoot "SharedModule"
+Import-Module $modulePath -Force
 
 if (-not $Path -and -not $File) {
     Write-Error "❌ Geef óf -Path óf -File op."
     exit 1
 }
 
-# Laad configuratie uit JSON bestand
-$configPath = if ([System.IO.Path]::IsPathRooted($Config)) {
-    $Config
-} else {
-    Join-Path $PSScriptRoot $Config
-}
-if (Test-Path $configPath) {
-    try {
-        $config = Get-Content -Path $configPath -Raw | ConvertFrom-Json
-
-        # Converteer JSON arrays naar PowerShell hashtable
-        $categorieMap = @{}
-        foreach ($property in $config.user.extensions.PSObject.Properties) {
-            $categorieMap[$property.Name] = $property.Value
-        }
-
-        Write-Host "✅ Configuratie geladen uit $configPath"
-    }
-    catch {
-        Write-Error "❌ Fout bij laden van configuratie: $_"
-        exit 1
-    }
-}
-else {
-    Write-Error "❌ Configuratiebestand niet gevonden: $configPath"
+if ($Path -and -not $Out) {
+    Write-Error "❌ Bij gebruik van -Path is -Out verplicht."
     exit 1
 }
 
-function Get-Categorie {
-    param($ext)
-    foreach ($key in $categorieMap.Keys) {
-        if ($categorieMap[$key] -contains $ext.ToLower()) {
-            return $key
-        }
-    }
-    return "Overig"
-}
 
-# Outputmap normaliseren
-$doelRoot = Resolve-Path -Path $Out -ErrorAction SilentlyContinue
-if (-not $doelRoot) {
-    $doelRoot = Join-Path -Path (Get-Location) -ChildPath $Out
-    New-Item -Path $doelRoot -ItemType Directory -Force | Out-Null
+# Outputmap normaliseren als -Out is opgegeven
+if ($Out) {
+    $doelRoot = Get-NormalizedPath -Path $Out -CreateIfNotExists
 }
-$doelRoot = $doelRoot.Path
 
 # Output CSV instellen
 if ($LogFile) {
@@ -112,7 +77,7 @@ if ($LogFile) {
     }
     $csvPath = $LogFile
 } else {
-    $base = Join-Path $PSScriptRoot ("verplaatsen-{0:yyyyMMdd-HHmmss}" -f (Get-Date))
+    $base = Join-Path $PSScriptRoot ("herstel-verplaatsen-{0:yyyyMMdd-HHmmss}" -f (Get-Date))
     $i = 0
     do {
         $csvPath = if ($i -eq 0) { "$base.csv" } else { "$base-$i.csv" }
@@ -123,7 +88,7 @@ if ($LogFile) {
 # Verzamel bestanden
 $bestanden = @()
 if ($Path) {
-    $bronMap = Convert-Path -LiteralPath $Path
+    $bronMap = Get-NormalizedPath -Path $Path
     $bestanden = Get-ChildItem -Path $bronMap -Recurse -File
 } elseif ($File) {
     if (-not (Test-Path $File)) {
@@ -142,11 +107,53 @@ if ($Path) {
             Write-Error "❌ CSV mist kolom 'Bestand'"
             exit 1
         }
-        $bestanden = $csv | Where-Object { Test-Path $_.Bestand } | ForEach-Object {
-            Get-Item $_.Bestand
+
+        # Controleer of er een 'Bestemming' kolom is
+        $heeftBestemming = $csv[0].PSObject.Properties["Bestemming"] -ne $null
+
+        if ($heeftBestemming -and -not $Out) {
+            # Gebruik bestemmingen uit CSV
+            $gebruikCsvBestemming = $true
+            # Standaard kopiëren bij gebruik van CSV-bestemmingen, tenzij expliciet anders aangegeven
+            if (-not $PSBoundParameters.ContainsKey('Copy')) {
+                $Copy = $true
+                Write-Host "✅ Bestanden worden standaard gekopieerd bij gebruik van CSV-bestemmingen"
+            }
+            Write-Host "✅ Bestemmingen worden uit CSV-kolom 'Bestemming' gehaald"
+        } elseif (-not $heeftBestemming -and -not $Out) {
+            Write-Error "❌ CSV heeft geen 'Bestemming' kolom en -Out is niet opgegeven"
+            exit 1
+        }
+
+        # Bewaar CSV data voor later gebruik
+        $csvData = $csv
+
+        # Haal bestandsobjecten op met koppeling naar originele CSV-rij
+        $bestandenMetCsv = @()
+        foreach ($rij in $csv) {
+            if (Test-Path $rij.Bestand) {
+                $bestandsObject = Get-Item $rij.Bestand
+                $bestandenMetCsv += [PSCustomObject]@{
+                    BestandsObject = $bestandsObject
+                    CsvRij = $rij
+                }
+            }
+        }
+
+        if ($gebruikCsvBestemming) {
+            # Gebruik de gecombineerde array voor verwerking
+            $bestanden = $bestandenMetCsv
+        } else {
+            # Gebruik alleen de bestandsobjecten voor verwerking
+            $bestanden = $bestandenMetCsv | ForEach-Object { $_.BestandsObject }
         }
     } else {
         # Verwerk als tekstbestand met één pad per regel
+        if (-not $Out) {
+            Write-Error "❌ Bij gebruik van een tekstbestand is -Out verplicht"
+            exit 1
+        }
+
         $bestandsPaden = Get-Content -Path $File -ErrorAction Stop | Where-Object { $_ -and (-not $_.StartsWith("#")) }
         $bestanden = $bestandsPaden | Where-Object { Test-Path $_ } | ForEach-Object {
             Get-Item $_
@@ -156,21 +163,30 @@ if ($Path) {
 
 $log = @()
 
-foreach ($bestand in $bestanden) {
-    $ext = $bestand.Extension
-    $categorie = Get-Categorie $ext
+foreach ($item in $bestanden) {
+    # Bepaal of we met een gecombineerd object of direct bestandsobject werken
+    $bestand = if ($gebruikCsvBestemming) { $item.BestandsObject } else { $item }
+    $csvRij = if ($gebruikCsvBestemming) { $item.CsvRij } else { $null }
 
-    $bovenMap = Split-Path $bestand.DirectoryName -Leaf
-    $subfolder = if ($bovenMap -ieq "Desktop") { "" } else { $bovenMap }
+    if ($gebruikCsvBestemming) {
+        # Gebruik bestemming uit CSV
+        $doelBestand = $csvRij.Bestemming
+        $doelMap = Split-Path -Path $doelBestand -Parent
 
-    $doelBasis = Join-Path $doelRoot $categorie
-    $definitieveDoelMap = if ($subfolder) { Join-Path $doelBasis $subfolder } else { $doelBasis }
+        # Zorg dat de doelmap bestaat
+        if (-not (Test-Path $doelMap)) {
+            New-Item -Path $doelMap -ItemType Directory -Force | Out-Null
+        }
+    } else {
+        # Gebruik -Out parameter zonder categorisatie
+        # Plaats bestanden direct in de doelmap of behoud de originele mapstructuur
+        $doelBestand = Join-Path $doelRoot $bestand.Name
 
-    if (-not (Test-Path $definitieveDoelMap)) {
-        New-Item -Path $definitieveDoelMap -ItemType Directory -Force | Out-Null
+        # Zorg dat de doelmap bestaat
+        if (-not (Test-Path $doelRoot)) {
+            New-Item -Path $doelRoot -ItemType Directory -Force | Out-Null
+        }
     }
-
-    $doelBestand = Join-Path $definitieveDoelMap $bestand.Name
 
     try {
         if ($Copy) {
@@ -185,7 +201,8 @@ foreach ($bestand in $bestanden) {
             Actie      = if ($Copy) { "Gekopieerd" } else { "Verplaatst" }
         }
 
-        Write-Host "$($log[-1].Actie): $($bestand.Name) → $categorie\$subfolder"
+        # Toon actie en bestemming
+        Write-Host "$($log[-1].Actie): $($bestand.Name) → $doelBestand"
     } catch {
         Write-Warning "⚠️  Kon niet verwerken: $($bestand.FullName) - $_"
     }

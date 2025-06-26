@@ -8,11 +8,13 @@ Een verzameling PowerShell-scripts om bestanden te ordenen, classificeren, verpl
 |-------------------------------------|------------------------------------------------------------------------------------------|
 | `SorteerOpDatum.ps1`                | Sorteert bestanden in jaar/maand submappen op basis van laatste wijzigingsdatum.         |
 | `BestandenVerplaatsen.ps1`          | Categoriseert bestanden naar type (documenten, afbeeldingen, backups, boeken, etc.).     |
+| `VerplaatslijstAanmaken.ps1`        | Genereert een CSV met bestemmingen voor bestanden op basis van extensie.                 |
 | `HerstelVerplaatsteBestanden.ps1`   | Zet bestanden terug naar hun originele locatie op basis van gegenereerde log-CSV.        |
 | `ClassificeerBestanden.ps1`         | Classificeert bestanden als gebruikers- of systeembestand o.b.v. extensie, naam en pad.  |
 | `VerwijderOngewensteBestanden.ps1`  | Verwijdert bestanden uit een tekst- of csv-bestand met paden.                            |
 | `VerwijderLegeMappen.ps1`           | Verwijdert lege mappen én mappen met alleen restanten zoals `desktop.ini` of `Thumbs.db`. |
 | `config.json`                       | Configuratiebestand met extensies en keywords voor classificatie en categorisatie.        |
+| `SharedModule`                      | PowerShell module met gedeelde functies voor alle scripts.                                |
 
 ## 📄 Algemene richtlijnen
 
@@ -39,6 +41,16 @@ Verplaatst of kopieert bestanden op basis van extensie en categoriseert ze in do
 - **Ondersteunt**: CSV-bestanden met kolom 'Bestand' of tekstbestanden met één pad per regel
 - **Logging**: Genereert een CSV-log met kolommen `Origineel`, `Bestemming`, `Actie`
 - **Herbruikbaar met**: `HerstelVerplaatsteBestanden.ps1`
+
+---
+
+### `VerplaatslijstAanmaken.ps1`
+Genereert een CSV-bestand met bestanden en hun bestemmingen op basis van bestandsextensies, zonder de bestanden daadwerkelijk te verplaatsen.
+- **Parameters**: `-File`, `-Out`, `-LogFile`, `-Config`
+- **Input**: Tekstbestand met één bestandspad per regel
+- **Output**: CSV-bestand met kolommen `Bestand` en `Bestemming`
+- **Categorisatie**: Gebruikt de `user.extensions` sectie uit config.json om bestanden te categoriseren
+- **Gebruik met**: De gegenereerde CSV kan gebruikt worden met `BestandenVerplaatsen.ps1 -File "verplaatslijst.csv"`
 
 ---
 
@@ -87,6 +99,20 @@ Configuratiebestand met extensies en keywords voor classificatie en categorisati
     - `extensions`: Extensies van bestanden die genegeerd moeten worden (.ds_store, thumbs.db, etc.)
     - `directories`: Namen van mappen die genegeerd moeten worden (__macosx, system volume information, etc.)
 
+---
+
+### `SharedModule`
+PowerShell module met gedeelde functies voor alle scripts.
+- **Functies**:
+  - `Get-Configuration`: Laadt configuratie uit config.json en structureert deze voor gebruik in scripts
+  - `Get-Categorie`: Bepaalt de categorie van een bestand op basis van extensie
+  - `Get-NormalizedPath`: Normaliseert een pad en maakt de map aan indien nodig
+- **Gebruik**: Alle scripts importeren deze module automatisch
+- **Voordelen**: 
+  - Centraliseert gemeenschappelijke functionaliteit
+  - Vermindert code duplicatie
+  - Zorgt voor consistente verwerking in alle scripts
+
 ## 🔄 Voorbeelden
 
 ```powershell
@@ -119,6 +145,9 @@ Configuratiebestand met extensies en keywords voor classificatie en categorisati
 
 # ❌ Verwijder specifieke bestanden uit lijst
 .\VerwijderOngewensteBestanden.ps1 -File "verwijderlijst.csv"
+
+# 📋 Genereer een verplaatslijst zonder bestanden te verplaatsen
+.\VerplaatslijstAanmaken.ps1 -File "te_verplaatsen.txt" -Out "C:\Doel" -OutFile "verplaatslijst.csv"
 ```
 
 Scripts zijn bedoeld om herbruikbaar en combineerbaar te zijn, zodat grootschalige opruimacties overzichtelijk en controleerbaar blijven.
@@ -127,7 +156,7 @@ Scripts zijn bedoeld om herbruikbaar en combineerbaar te zijn, zodat grootschali
 
 Het `config.json` bestand bevat alle configuratie voor de scripts, georganiseerd in drie hoofdsecties:
 
-1. **user**: Configuratie voor gebruikersbestanden (gebruikt door BestandenVerplaatsen.ps1 en ClassificeerBestanden.ps1)
+1. **user**: Configuratie voor gebruikersbestanden (gebruikt door BestandenVerplaatsen.ps1, VerplaatslijstAanmaken.ps1 en ClassificeerBestanden.ps1)
    - **extensions**: Bestandsextensies per categorie (Afbeeldingen, Documenten, etc.)
    - **directories**: Mapnamen die wijzen op gebruikerslocaties
 

@@ -14,9 +14,18 @@
         ]
     },
     "system": {
-        "extensions": [
-            ".dll", ".sys", ".exe", ".msi", ".drv", ".ini", ".reg", ".bat", ".cmd", ".vbs", ".ps1", ".log", ".tmp", ".inf", ".dat", ".gadget", ".manifest", ".ico", ".ocx", ".cpl", ".scr", ".pif", ".com", ".hlp", ".chm", ".cab", ".msp", ".msu", ".appx", ".msix", ".lnk", ".url", ".theme", ".deskthemepack", ".library-ms", ".search-ms", ".scf", ".job", ".pol", ".adm", ".admx", ".wim", ".esd", ".etl", ".evtx", ".dmp", ".mdmp", ".pdb", ".mui", ".nls"
-        ],
+        "extensions": {
+            "Uitvoerbare Bestanden": [".exe", ".msi", ".com", ".scr", ".pif", ".appx", ".msix"],
+            "Scripts": [".bat", ".cmd", ".vbs", ".ps1"],
+            "Systeembestanden": [".dll", ".sys", ".drv", ".ocx", ".cpl"],
+            "Configuratie": [".ini", ".reg", ".inf", ".pol", ".adm", ".admx"],
+            "Documentatie": [".hlp", ".chm"],
+            "Logboeken en Data": [".log", ".tmp", ".dat", ".etl", ".evtx", ".dmp", ".mdmp", ".pdb"],
+            "Weergave": [".ico", ".theme", ".deskthemepack"],
+            "Windows Specifiek": [".wim", ".esd", ".mui", ".nls", ".cab", ".msp", ".msu"],
+            "Snelkoppelingen": [".lnk", ".url", ".library-ms", ".search-ms", ".scf", ".job"],
+            "Overig": [".manifest", ".gadget"]
+        },
         "directories": [
             "windows", "program files", "programdata", "drivers", "system32", "intel", "nvidia"
         ],
