@@ -103,7 +103,7 @@ foreach ($bestand in $alleBestanden) {
     $ext = $bestand.Extension.ToLower()
     $naam = $bestand.Name.ToLower()
     $pad = $bestand.FullName.ToLower()
-    $cat = Get-Categorie -Extension $ext -CategorieMap $categorieMap -Config $config
+    $cat = Get-Categorie -Extension $ext -CategorieMap $categorieMap -Config $config -FileInfo $bestand
 
     $scoreV = 0
     $scoreG = 0
@@ -118,8 +118,11 @@ foreach ($bestand in $alleBestanden) {
     if ($cat -eq "Afbeeldingen") {
         try {
             $img = [System.Drawing.Image]::FromFile($bestand.FullName)
+
+            # Check if image meets icon criteria and increment score
             if ($img.Width -le 256 -and $img.Height -le 256) { $scoreV++ }
             if ($bestand.Length -lt 51200) { $scoreV++ }  # onder 50KB
+
             $img.Dispose()
         } catch {}
     }

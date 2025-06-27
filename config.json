@@ -21,10 +21,11 @@
             "Configuratie": [".ini", ".reg", ".inf", ".pol", ".adm", ".admx"],
             "Documentatie": [".hlp", ".chm"],
             "Logboeken en Data": [".log", ".tmp", ".dat", ".etl", ".evtx", ".dmp", ".mdmp", ".pdb"],
-            "Weergave": [".ico", ".theme", ".deskthemepack"],
+            "Add-ons": [".theme", ".deskthemepack", ".gadget"],
+            "Iconen": [".ico"],
             "Windows Specifiek": [".wim", ".esd", ".mui", ".nls", ".cab", ".msp", ".msu"],
             "Snelkoppelingen": [".lnk", ".url", ".library-ms", ".search-ms", ".scf", ".job"],
-            "Overig": [".manifest", ".gadget"]
+            "Overig": [".manifest"]
         },
         "directories": [
             "windows", "program files", "programdata", "drivers", "system32", "intel", "nvidia"

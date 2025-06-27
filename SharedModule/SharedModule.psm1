@@ -61,12 +61,15 @@ function Get-Categorie {
     param (
         [Parameter(Mandatory = $true)]
         [string]$Extension,
-        
+
         [Parameter(Mandatory = $true)]
         [hashtable]$CategorieMap,
-        
+
         [Parameter(Mandatory = $false)]
-        [PSCustomObject]$Config
+        [PSCustomObject]$Config,
+
+        [Parameter(Mandatory = $false)]
+        [System.IO.FileInfo]$FileInfo
     )
 
     # Remove leading dot if present
@@ -80,6 +83,21 @@ function Get-Categorie {
     # Check user extensions first
     foreach ($key in $CategorieMap.Keys) {
         if ($CategorieMap[$key] -contains $ext) {
+            # Special case for images - check if it's an icon
+            if ($key -eq "Afbeeldingen" -and $FileInfo) {
+                try {
+                    Add-Type -AssemblyName System.Drawing -ErrorAction SilentlyContinue
+                    $img = [System.Drawing.Image]::FromFile($FileInfo.FullName)
+
+                    # If both criteria are met, change category to "Iconen"
+                    if ($img.Width -le 256 -and $img.Height -le 256 -and $FileInfo.Length -lt 51200) {
+                        $img.Dispose()
+                        return "Iconen"
+                    }
+
+                    $img.Dispose()
+                } catch {}
+            }
             return $key
         }
     }
@@ -101,20 +119,20 @@ function Get-NormalizedPath {
     param (
         [Parameter(Mandatory = $true)]
         [string]$Path,
-        
+
         [switch]$CreateIfNotExists
     )
 
     $normalizedPath = Resolve-Path -Path $Path -ErrorAction SilentlyContinue
-    
+
     if (-not $normalizedPath) {
         $normalizedPath = Join-Path -Path (Get-Location) -ChildPath $Path
-        
+
         if ($CreateIfNotExists -and -not (Test-Path $normalizedPath)) {
             New-Item -Path $normalizedPath -ItemType Directory -Force | Out-Null
         }
     }
-    
+
     return if ($normalizedPath -is [string]) { $normalizedPath } else { $normalizedPath.Path }
 }
 
