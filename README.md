@@ -7,7 +7,7 @@ Een verzameling PowerShell-scripts om bestanden te ordenen, classificeren, verpl
 | Script                             | Doel                                                                                      |
 |------------------------------------|-------------------------------------------------------------------------------------------|
 | `SorteerOpDatum.ps1`               | Sorteert bestanden in jaar/maand submappen op basis van laatste wijzigingsdatum.          |
-| `BestandenVerplaatsen.ps1`         | Categoriseert bestanden naar type (documenten, afbeeldingen, backups, boeken, etc.).      |
+| `BestandenVerplaatsen.ps1`         | Verplaatst of kopieert bestanden uit map of lijst naar doelmap      |
 | `VerplaatsingBepalen.ps1`          | Genereert een CSV met bestemmingen voor bestanden op basis van extensie.                  |
 | `HerstelVerplaatsteBestanden.ps1`  | Zet bestanden terug naar hun originele locatie op basis van gegenereerde log-CSV.         |
 | `ClassificeerBestanden.ps1`        | Classificeert bestanden als gebruikers- of systeembestand o.b.v. extensie, naam en pad.   |
@@ -17,90 +17,120 @@ Een verzameling PowerShell-scripts om bestanden te ordenen, classificeren, verpl
 | `SharedModule`                     | PowerShell module met gedeelde functies voor alle scripts.                                |
 | `LlmModule`                        | PowerShell module voor interactie met lokale LLM-modellen (LMStudio of Ollama).           |
 
-## 📄 Algemene richtlijnen
-
-- Scripts gebruiken parameters zoals `-Path`, `-Out`, `-Copy`, `-File`, `-Config`, `-LogFile`.
-- Bestandscategorieën en classificatieregels worden geconfigureerd in `config.json`.
-- Verplaatsscripts genereren CSV-logs die gebruikt kunnen worden om bestanden terug te zetten.
-- De hersteltool leest deze logs in en zet bestanden terug naar de oorspronkelijke locatie.
-
 ## 🧰 Beschrijving per script
 
 ### `SorteerOpDatum.ps1`
 
-Sorteert bestanden in jaar/maand mappen op basis van de laatste wijzigingsdatum.
+Sorteert bestanden in submappen per jaar en maand op basis van de laatste wijzigingsdatum (`LastWriteTime`).
 
-- **Parameters**: `-Path`, `-Out`, `-LogFile`
-- **Voorbeeld outputstructuur**: `2024\06\bestand.jpg`
-- **Logging**: Genereert een CSV-log met kolommen `Origineel`, `Bestemming`, `Actie`
-- **Herbruikbaar met**: `HerstelVerplaatsteBestanden.ps1`
-
----
-
+- **Parameters**:
+  - `-Path`: De bronmap die je wilt ordenen (wordt recursief doorzocht naar bestanden).
+  - `-Out`: De doelmap waarin bestanden worden geplaatst in structuur: \YYYY\MM\bestand.ext
+  - `-LogFile`: (optioneel) Pad naar een logbestand. Indien niet opgegeven, wordt automatisch een logbestand met timestamp aangemaakt.
+- **Ondersteunt**:
+  - Volledige mappen met bestanden (recursief)
+- **Gedrag**:
+  - Bestanden worden verplaatst naar submappen gestructureerd als `Jaar\Maand` op basis van hun laatste wijzigingsdatum.
+  - Als er bestandsnaamconflicten zijn, wordt automatisch een timestamp aan de bestandsnaam toegevoegd.
+- **Logging**:
+  - CSV met kolommen: `Origineel`, `Bestemming`, `Actie`
+- **Herbruikbaar met**: `HerstelVerplaatsteBestanden.ps1` om bestanden terug te zetten naar hun originele locaties.
 ### `BestandenVerplaatsen.ps1`
 
-Verplaatst of kopieert bestanden op basis van extensie en categoriseert ze in doelmappen per type.
+Verplaatst of kopieert bestanden vanuit een opgegeven map of een bestand met paden naar een doelmap, of naar specifieke bestemmingen uit een CSV-bestand.
 
-- **Parameters**: `-Path`, `-Out`, `-Copy`, `-File`, `-LogFile`, `-Config`
-- **Input**: Kan een map doorzoken (`-Path`) of een bestand met paden lezen (`-File`)
-- **Ondersteunt**: CSV-bestanden met kolom 'Bestand' of tekstbestanden met één pad per regel
-- **Logging**: Genereert een CSV-log met kolommen `Origineel`, `Bestemming`, `Actie`
-- **Herbruikbaar met**: `HerstelVerplaatsteBestanden.ps1`
-
----
-
+- **Parameters**:
+  - `-Path`: (optioneel) Map die recursief wordt doorzocht naar bestanden om te verplaatsen of kopiëren.
+  - `-File`: (optioneel) Tekstbestand met één pad per regel, of een CSV met kolom `Bestand` (en optioneel `Bestemming`).
+  - `-Out`: Doelmap waarin bestanden geplaatst worden (verplicht bij gebruik van `-Path`, of bij `-File` zonder `Bestemming`-kolom).
+  - `-Copy`: Voeg deze switch toe om bestanden te kopiëren i.p.v. verplaatsen.
+  - `-LogFile`: Pad naar optioneel CSV-logbestand. Indien niet opgegeven, wordt een log met timestamp aangemaakt.
+- **Ondersteunt**:
+  - Bestanden uit een map (`-Path`)
+  - Tekstbestanden met één bestandspad per regel (`-File`)
+  - CSV-bestanden met kolom `Bestand` (en eventueel `Bestemming`)
+- **Gedrag**:
+  - Als `Bestemming`-kolom aanwezig is: die paden worden als doel gebruikt.
+  - Als alleen `-Out` wordt opgegeven: bestanden worden daarheen verplaatst of gekopieerd.
+  - Standaard worden bestanden verplaatst, tenzij `-Copy` is opgegeven of automatisch ingeschakeld bij CSV-bestemmingen.
+- **Logging**:
+  - Alle acties worden gelogd in een CSV met kolommen: `Origineel`, `Bestemming`, `Actie`.
+- **Herbruikbaar met**: `HerstelVerplaatsteBestanden.ps1` voor het terugzetten van bestanden.
 ### `VerplaatsingBepalen.ps1`
 
-Genereert een CSV-bestand met bestanden en hun bestemmingen op basis van bestandsextensies, zonder de bestanden
-daadwerkelijk te verplaatsen.
+Genereert een CSV-bestand met voorgestelde bestemmingen voor bestanden op basis van extensiecategorieën uit `config.json`.
 
-- **Parameters**: `-File`, `-Out`, `-LogFile`, `-Config`
-- **Input**: Tekstbestand met één bestandspad per regel
-- **Output**: CSV-bestand met kolommen `Bestand` en `Bestemming`
-- **Categorisatie**: Gebruikt de `user.extensions` sectie uit config.json om bestanden te categoriseren
-- **Gebruik met**: De gegenereerde CSV kan gebruikt worden met `BestandenVerplaatsen.ps1 -File "verplaatslijst.csv"`
-
----
-
+- **Parameters**:
+  - `-File`: Tekstbestand met één bestandspad per regel.
+  - `-Out`: Doelmap waarin bestanden uiteindelijk zouden worden geplaatst (deze wordt alleen voor padopbouw gebruikt).
+  - `-OutFile`: Pad naar het CSV-bestand dat gegenereerd wordt met de voorgestelde verplaatsingen.
+  - `-Config`: Pad naar een `config.json` bestand met categorisatieregels (indien niet opgegeven wordt de standaard gebruikt).
+  - `-LogFile`: (optioneel) Pad naar een extra logbestand met verwerkingsdetails.
+- **Ondersteunt**:
+  - TXT-bestanden met bestandsnamen
+- **Gedrag**:
+  - Bepaalt bestemmingen op basis van extensies en categorieën in de configuratie.
+- **Output**:
+  - CSV met kolommen: `Bestand`, `Bestemming`
+- **Herbruikbaar met**: `BestandenVerplaatsen.ps1` (via `-File`) om de verplaatsing uit te voeren.
 ### `HerstelVerplaatsteBestanden.ps1`
 
-Leest een CSV-log en zet bestanden terug naar hun oorspronkelijke pad.
+Zet bestanden terug naar hun oorspronkelijke locatie op basis van een CSV-logbestand.
 
-- **Parameters**: `-File`
-- **Input CSV**: vereist kolommen `Origineel` en `Bestemming`
-
----
-
+- **Parameters**:
+  - `-File`: CSV-bestand met kolommen `Origineel` en `Bestemming`.
+- **Ondersteunt**:
+  - Logbestanden gegenereerd door `BestandenVerplaatsen.ps1` of `SorteerOpDatum.ps1`.
+- **Gedrag**:
+  - Verwisselt kolommen `Origineel` en `Bestemming` en verplaatst bestanden terug naar hun oorspronkelijke locatie.
+- **Logging**:
+  - Geen extra logging; logbestand dient als invoer en verslag.
+- **Herbruikbaar met**:
+  - `BestandenVerplaatsen.ps1`, `SorteerOpDatum.ps1`, en andere scripts die verplaatslogs genereren.
 ### `ClassificeerBestanden.ps1`
 
-Berekent voor elk bestand een score o.b.v. extensie, bestandsnaam en padinhoud, en classificeert deze:
+Classificeert bestanden als systeem- of gebruikersbestand op basis van extensie, pad en bestandsnaam.
 
-- **Parameters**: `-Path`, `-Config`
-- **Classificaties**: `Waarschijnlijk systeembestand`, `Waarschijnlijk gebruikersbestand`, `Onbeslist`
-- **Output**: CSV-rapport met kolommen: `Bestand`, `Categorie`, `Score`, `Classificatie`
-- **Export**: automatisch naar map `classificatie-<timestamp>\...`
-
----
-
+- **Parameters**:
+  - `-Path`: De map waarin bestanden geanalyseerd worden.
+  - `-Config`: (optioneel) Pad naar een `config.json` bestand met classificatieregels.
+- **Ondersteunt**:
+  - Recursieve mappenstructuren met diverse bestandstypes
+- **Gedrag**:
+  - Gebruikt heuristieken op basis van extensie, mapnamen en bestandsnamen om bestanden te classificeren als:
+    - `Waarschijnlijk gebruikersbestand`
+    - `Waarschijnlijk systeembestand`
+    - `Onbeslist`
+- **Output**:
+  - CSV-rapport met kolommen: `Bestand`, `Categorie`, `Score`, `Classificatie`
+  - Rapport wordt automatisch opgeslagen in `classificatie-<timestamp>\...`
+- **Herbruikbaar met**:
+  - Andere scripts voor filtering, verplaatsing of verwijdering.
 ### `VerwijderOngewensteBestanden.ps1`
 
-Verwijdert paden opgegeven in een `.txt` of `.csv`-bestand.
+Verwijdert bestanden op basis van een lijst in een `.txt` of `.csv`-bestand.
 
-- **Parameters**: `-File`
-- **Ondersteunt**: eenvoudige padlijsten (txt) of CSV-bestanden met kolom `Origineel`
-
----
-
+- **Parameters**:
+  - `-File`: Tekstbestand met één pad per regel, of CSV-bestand met kolom `Origineel`.
+- **Ondersteunt**:
+  - Zowel eenvoudige padlijsten als CSV-logs
+- **Gedrag**:
+  - Verwijdert bestanden en toont waarschuwingen bij ontbrekende of vergrendelde bestanden.
+- **Logging**:
+  - Geen aparte log; verwijderde bestanden zijn in te zien via de oorspronkelijke invoerlijst.
 ### `VerwijderLegeMappen.ps1`
 
-Zoekt en verwijdert lege mappen, ook wanneer ze alleen systeemrestanten bevatten.
+Zoekt en verwijdert lege mappen en systeemrestanten uit een opgegeven pad.
 
-- **Parameters**: `-Path`, `-Config`
-- **Verwijdert**: ook mappen die enkel `Thumbs.db`, `desktop.ini` of `.ds_store` bevatten
-- **Configuratie**: Gebruikt de `ignore` sectie uit config.json voor ongewenste bestanden en mappen
-
----
-
+- **Parameters**:
+  - `-Path`: De hoofdmap waarin gezocht wordt.
+  - `-Config`: (optioneel) JSON-bestand met instellingen voor uitzonderingen (`ignore.directories`, `ignore.extensions`).
+- **Ondersteunt**:
+  - Recursieve opschoning, inclusief lege mappen met alleen bestanden als `Thumbs.db`, `desktop.ini`, `.DS_Store`, etc.
+- **Gedrag**:
+  - Verwijdert mappen die volledig leeg zijn óf enkel bekende 'rommel' bevatten.
+- **Logging**:
+  - Console-uitvoer van verwijderde mappen.
 ### `config.json`
 
 Configuratiebestand met extensies en keywords voor classificatie en categorisatie.
@@ -118,108 +148,3 @@ Configuratiebestand met extensies en keywords voor classificatie en categorisati
 		- `directories`: Namen van mappen die genegeerd moeten worden (__macosx, system volume information, etc.)
 
 ---
-
-### `SharedModule`
-
-PowerShell module met gedeelde functies voor alle scripts.
-
-- **Functies**:
-	- `Get-Configuration`: Laadt configuratie uit config.json en structureert deze voor gebruik in scripts
-	- `Get-Categorie`: Bepaalt de categorie van een bestand op basis van extensie
-	- `Get-NormalizedPath`: Normaliseert een pad en maakt de map aan indien nodig
-- **Gebruik**: Alle scripts importeren deze module automatisch
-- **Voordelen**:
-	- Centraliseert gemeenschappelijke functionaliteit
-	- Vermindert code duplicatie
-	- Zorgt voor consistente verwerking in alle scripts
-
----
-
-### `LlmModule`
-
-PowerShell module voor interactie met lokale LLM-modellen (LMStudio of Ollama).
-
-- **Functies**:
-	- `Get-BatchLlmSuggestions`: Verwerkt bestanden in batches en gebruikt LLM-modellen om geschikte submappen voor te
-	  stellen
-- **Werking**:
-	- Groepeert bestanden per categorie en extensie voor efficiënte verwerking
-	- Probeert eerst verbinding te maken met Ollama (http://localhost:11434)
-	- Valt terug op LMStudio (http://localhost:1234) als Ollama niet beschikbaar is
-	- Zoekt naar patronen en relaties tussen bestanden om logische groepen voor te stellen
-- **Voordelen**:
-	- Intelligente organisatie van bestanden op basis van inhoud en context
-	- Batchverwerking voor efficiëntie
-	- Flexibele fallback tussen verschillende LLM-providers
-
-## 🔄 Voorbeelden
-
-```powershell
-# 📂 Verplaats bestanden op basis van type en submap
-.\BestandenVerplaatsen.ps1 -Path "C:\Users\jhaag\Downloads" -Out "C:\Gesorteerd" -Copy
-
-# 📂 Verplaats bestanden uit een tekstbestand met paden
-.\BestandenVerplaatsen.ps1 -File "te_verplaatsen.txt" -Out "C:\Gesorteerd" -LogFile "verplaatslog.csv"
-
-# 📂 Gebruik een aangepast configuratiebestand
-.\BestandenVerplaatsen.ps1 -Path "C:\Data" -Out "C:\Gesorteerd" -Config "mijn-config.json"
-
-# 📅 Sorteer bestanden op datum en maak een log voor herstel
-.\SorteerOpDatum.ps1 -Path "C:\Ongesorteerd" -Out "C:\Op-Datum" -LogFile "sorteerlog.csv"
-
-# 📊 Classificeer bestanden op verdacht/gebruiker
-.\ClassificeerBestanden.ps1 -Path "C:\Backup"
-
-# 📊 Classificeer met aangepaste configuratie
-.\ClassificeerBestanden.ps1 -Path "C:\Backup" -Config "mijn-config.json"
-
-# ↩️ Herstel bestanden naar originele locaties
-.\HerstelVerplaatsteBestanden.ps1 -File "verplaatslog.csv"
-
-# 🗑️ Verwijder lege/vervuilde mappen
-.\VerwijderLegeMappen.ps1 -Path "C:\Gesorteerd"
-
-# 🗑️ Verwijder lege/vervuilde mappen met aangepaste configuratie
-.\VerwijderLegeMappen.ps1 -Path "C:\Gesorteerd" -Config "mijn-config.json"
-
-# ❌ Verwijder specifieke bestanden uit lijst
-.\VerwijderOngewensteBestanden.ps1 -File "verwijderlijst.csv"
-
-# 📋 Genereer een verplaatslijst zonder bestanden te verplaatsen
-.\VerplaatsingBepalen.ps1 -File "te_verplaatsen.txt" -Out "C:\Doel" -OutFile "verplaatslijst.csv"
-
-# 🤖 Gebruik LLM voor intelligente mapindeling
-Import-Module .\LlmModule\LlmModule.psm1
-$bestanden = Get-ChildItem -Path "C:\Ongesorteerd" -File | ForEach-Object {
-    [PSCustomObject]@{
-        FilePath = $_.FullName
-        Category = "Documenten"
-        Extension = $_.Extension.TrimStart('.')
-    }
-}
-$suggesties = Get-BatchLlmSuggestions -Files $bestanden -BatchSize 20
-```
-
-Scripts zijn bedoeld om herbruikbaar en combineerbaar te zijn, zodat grootschalige opruimacties overzichtelijk en
-controleerbaar blijven.
-
-## ⚙️ Configuratie
-
-Het `config.json` bestand bevat alle configuratie voor de scripts, georganiseerd in drie hoofdsecties:
-
-1. **user**: Configuratie voor gebruikersbestanden (gebruikt door BestandenVerplaatsen.ps1, VerplaatsingBepalen.ps1 en
-   ClassificeerBestanden.ps1)
-	- **extensions**: Bestandsextensies per categorie (Afbeeldingen, Documenten, etc.)
-	- **directories**: Mapnamen die wijzen op gebruikerslocaties
-
-2. **system**: Configuratie voor systeembestanden (gebruikt door ClassificeerBestanden.ps1)
-	- **extensions**: Extensies van systeembestanden (.dll, .exe, etc.)
-	- **directories**: Mapnamen die wijzen op systeemlocaties
-	- **files**: Bestandsnamen die wijzen op systeembestanden
-
-3. **ignore**: Configuratie voor bestanden en mappen die genegeerd moeten worden (gebruikt door VerwijderLegeMappen.ps1)
-	- **extensions**: Extensies van bestanden die genegeerd moeten worden (.ds_store, thumbs.db, etc.)
-	- **directories**: Namen van mappen die genegeerd moeten worden (__macosx, system volume information, etc.)
-
-Je kunt dit bestand aanpassen om de scripts aan te passen aan je specifieke behoeften. Gebruik de `-Config` parameter om
-een aangepast configuratiebestand te gebruiken.
